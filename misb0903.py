@@ -58,6 +58,7 @@ class VMTIMetadataLocalSet:
             4: self.vmti_ls_version_num,
             5: self.total_num_targets_detected,
             6: self.num_targets_reported,
+            7: self.number_of_rois,
             8: self.frame_width,
             9: self.frame_height,
             10: self.vmti_source_sensor,
@@ -86,6 +87,13 @@ class VMTIMetadataLocalSet:
         return int.from_bytes(value, byteorder='big')
 
     def num_targets_reported(self, value):
+        return int.from_bytes(value, byteorder='big')
+    
+    def number_of_rois(self, value):
+        """
+        Decoder for Key 7 in ST 0903: Number of Regions of Interest (ROI) Reported.
+        Typically a 1-byte unsigned integer.
+        """
         return int.from_bytes(value, byteorder='big')
 
     def frame_width(self, value):

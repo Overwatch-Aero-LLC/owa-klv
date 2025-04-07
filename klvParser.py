@@ -193,7 +193,7 @@ class KLVParser:
 import csv
 
 if __name__ == "__main__":
-    with open('./trimmed_testKlv_50KB.bin', 'rb') as f:
+    with open('./goodwin_trimmed_5kb.bin', 'rb') as f:
         rawBinary = f.read()
 
     # MISB0601 key
@@ -236,6 +236,6 @@ if __name__ == "__main__":
     # print('\nparsed:\n', parsed[1])
     # print('length of parsed:\n', len(parsed))
 
-    print('\nparsed and decoded:\n', data.result[1])
+    print('\nparsed and decoded:\n', data.result[7])
     print('length of parsed and decoded:\n', len(data.result))
     # print(data.result)

@@ -75,6 +75,7 @@ misb0601_key_names = {
     70: 'Alternate Platform Name',
     71: 'Alternate Platform Heading',
     72: 'Event Start Time UTC',
+    73: 'RVT Local Set Conversion',
     74: 'VMTI Local Set',
     75: 'Sensor Ellipsoid Height',
     76: 'Alternate Platform Ellipsoid Height',
@@ -82,6 +83,7 @@ misb0601_key_names = {
     78: 'Frame Center Height Above Ellipsoid',
     79: 'Sensor North Velocity',
     80: 'Sensor East Velocity',
+    81: 'Image Horizon Pixel Pack',
     82: 'Offset Corner Latitude Point 1 (Full)',
     83: 'Offset Corner Longitude Point 1 (Full)',
     84: 'Offset Corner Latitude Point 2 (Full)',
@@ -94,7 +96,14 @@ misb0601_key_names = {
     91: 'Platform Roll Angle (Full)',
     92: 'Platform Angle of Attack (Full)',
     93: 'Platform Sideslip Angle (Full)',
-    96: 'Target Width Extended',
+    94: 'MIIS Core Identifier',
+    95: 'SAR Motion Imagery Metadata',
+    97: 'Reserved',
+    98: 'Reserved',
+    99: 'Reserved',
+    100: 'Reserved',
+    101: 'Reserved',
+    102: 'Reserved',
     103: 'Density Altitude Extended',
     104: 'Sensor Ellipsoid Height Extended',
     105: 'Alternate Platform Ellipsoid Height Extended',
@@ -175,6 +184,7 @@ def decode_misb0601_item(key, value):
         70: decode_alternate_platform_name,
         71: decode_alternate_platform_heading,
         72: decode_event_start_time_utc,
+        73: decode_rvt_local_set,
         74: decode_vmti_local_set,
         75: decode_sensor_ellipsoid_height,
         76: decode_alternate_platform_ellipsoid_height,
@@ -182,6 +192,7 @@ def decode_misb0601_item(key, value):
         78: decode_frame_center_height_above_ellipsoid,
         79: decode_sensor_north_velocity,
         80: decode_sensor_east_velocity,
+        81: decode_image_horizon_pixel_pack,
         82: decode_offset_corner_latitude_point_1_full,
         83: decode_offset_corner_longitude_point_1_full,
         84: decode_offset_corner_latitude_point_2_full,
@@ -194,7 +205,15 @@ def decode_misb0601_item(key, value):
         91: decode_platform_roll_angle_full,
         92: decode_platform_angle_of_attack_full,
         93: decode_platform_sideslip_angle_full,
+        94: decode_miis_core_identifier,
+        95: decode_sar_motion_imagery_metadata,
         96: decode_target_width_extended,
+        97: decode_reserved,
+        98: decode_reserved,
+        99: decode_reserved,
+        100: decode_reserved,
+        101: decode_reserved,
+        102: decode_reserved,
         103: decode_density_altitude_extended,
         104: decode_sensor_ellipsoid_height_extended,
         105: decode_alternate_platform_ellipsoid_height_extended,
@@ -377,7 +396,6 @@ def decode_target_error_estimate_ce90(value):
 
 def decode_target_error_estimate_le90(value):
     value = int.from_bytes(value, byteorder='big', signed=False)
-    print('\n',value)
     return (4095/65535) * value
 
 def decode_generic_flag_data(value):
@@ -576,6 +594,44 @@ def decode_sensor_ellipsoid_height_extended(value):
 
 def decode_alternate_platform_ellipsoid_height_extended(value):
     return 'IMAPB'
+
+def decode_rvt_local_set(value):
+    """
+    Decoder for Key 73: RVT Local Set.
+    This field is used to embed an ST0806 RVT Local Set.
+    Here we simply return the raw hex string.
+    """
+    return f"RVT Local Set: {value.hex()}"
+
+def decode_image_horizon_pixel_pack(value):
+    """
+    Decoder for Key 81: Image Horizon Pixel Pack.
+    Without detailed structure, we return the raw hex representation.
+    If the structure is known, you could parse sub-fields here.
+    """
+    return f"Image Horizon Pixel Pack: {value.hex()}"
+
+def decode_miis_core_identifier(value):
+    """
+    Decoder for Key 94: MIIS Core Identifier.
+    Typically a 16-byte binary value.
+    """
+    return value.hex()
+
+def decode_sar_motion_imagery_metadata(value):
+    """
+    Decoder for Key 95: SAR Motion Imagery Metadata.
+    This is a nested local set (ST 1206). In this placeholder,
+    we return the raw hex representation.
+    """
+    return f"SAR Motion Imagery Metadata: {value.hex()}"
+
+def decode_reserved(value):
+    """
+    Generic decoder for reserved/future keys (97, 98, 99, 100, 101, 102).
+    Returns the raw value as a hex string.
+    """
+    return f"Reserved (raw): {value.hex()}"
 
 # Utility functions for conversions
 def uint_to_float(value, domain, range_):
