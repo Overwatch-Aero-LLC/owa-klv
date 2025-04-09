@@ -1,0 +1,26 @@
+{
+    "Records": [
+      {
+        "eventVersion": "2.1",
+        "eventSource": "aws:s3",
+        "awsRegion": "us-east-1",
+        "eventTime": "2025-04-08T12:00:00.000Z",
+        "eventName": "ObjectCreated:Put",
+        "s3": {
+          "s3SchemaVersion": "1.0",
+          "configurationId": "localTestConfig",
+          "bucket": {
+            "name": "testFIles",
+            "arn": "arn:aws:s3:::testFIles"
+          },
+          "object": {
+            "key": "testFIles/test.bin",
+            "size": 5120,
+            "eTag": "0123456789abcdef0123456789abcdef",
+            "sequencer": "00000000000000000000000000000000"
+          }
+        }
+      }
+    ]
+  }
+  
