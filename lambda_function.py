@@ -3,50 +3,53 @@ import boto3
 import logging
 import os
 from lib.klvParser import KLVParser
-from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client('s3')
 
+# Corrected bucket name (bucket ONLY)
 DESTINATION_BUCKET = 'fmv-test'
-DESTINATION_PREFIX = 'lambdaTest/output'
-DESTINATION_FILE = 'klvMetaData.json'
 
+# Prefix for subfolder(s) inside bucket
+DESTINATION_PREFIX = 'lambdaTest/output'
 UAS_LDS_KEY = [6, 14, 43, 52, 2, 11, 1, 1, 14, 1, 3, 1, 1, 0, 0, 0]
 
 TS_PACKET_SIZE = 188
 SYNC_BYTE = 0x47
-TARGET_PID = 0x101
+TARGET_PID = 0x101  # This is the second stream
 
 def extract_klv_payloads_from_ts(stream):
     klv_data = b""
     while True:
         packet = stream.read(TS_PACKET_SIZE)
         if not packet or len(packet) != TS_PACKET_SIZE:
-            break
+            break  # End of stream or incomplete packet
 
+        # Check sync byte
         if packet[0] != SYNC_BYTE:
             continue
 
+        # Parse header
         pid = ((packet[1] & 0x1F) << 8) | packet[2]
+
         if pid != TARGET_PID:
             continue
 
+        # Adaptation field control
         adaptation_field_control = (packet[3] >> 4) & 0x03
         payload_start = 4
 
-        if adaptation_field_control in [2, 3]:
+        if adaptation_field_control in [2, 3]:  # Has adaptation field
             adaptation_field_length = packet[4]
             payload_start += 1 + adaptation_field_length
 
         if payload_start >= TS_PACKET_SIZE:
-            continue
+            continue  # No payload
 
         payload = packet[payload_start:]
         klv_data += payload
-
     return klv_data
 
 def lambda_handler(event, context):
@@ -61,50 +64,39 @@ def lambda_handler(event, context):
         return {"statusCode": 400, "body": "Bad event data"}
 
     try:
+        # Retrieve .ts file from the source bucket
         response = s3.get_object(Bucket=source_bucket, Key=source_key)
+        
+        # Extract KLV data directly from the stream
         klv_data = extract_klv_payloads_from_ts(response['Body'])
 
+        # Parse the extracted KLV data
         parser = KLVParser(klv_data, UAS_LDS_KEY)
         parser.decode()
         result = parser.result
 
-        # Retrieve existing JSON file from S3
-        destination_key = f"{DESTINATION_PREFIX}/{DESTINATION_FILE}"
+        # Convert parsed result to JSON
+        json_result = json.dumps(result, default=str, indent=2)
 
-        try:
-            existing_json_obj = s3.get_object(Bucket=DESTINATION_BUCKET, Key=destination_key)
-            existing_json = existing_json_obj['Body'].read().decode('utf-8')
-            json_data = json.loads(existing_json)
-            logger.info("Existing JSON file found and loaded.")
-        except ClientError as e:
-            if e.response['Error']['Code'] == "NoSuchKey":
-                json_data = []
-                logger.info("No existing JSON file found. Creating new one.")
-            else:
-                raise e
+        # Prepare the output JSON file name (replace .ts with .json)
+        output_filename = os.path.splitext(os.path.basename(source_key))[0] + '.json'
 
-        # Append new data
-        json_data.append({
-            "source_file": source_key,
-            "parsed_data": result
-        })
+        # Construct full S3 key with prefix
+        output_key = f"{DESTINATION_PREFIX}/{output_filename}"
 
-        # Convert back to JSON
-        json_result = json.dumps(json_data, default=str, indent=2)
-
-        # Upload updated JSON back to S3
+        # Upload JSON to destination bucket
         s3.put_object(
             Bucket=DESTINATION_BUCKET,
-            Key=destination_key,
+            Key=output_key,
             Body=json_result.encode('utf-8'),
             ContentType='application/json'
         )
 
-        logger.info(f"Updated JSON uploaded to s3://{DESTINATION_BUCKET}/{destination_key}")
+        logger.info(f"JSON uploaded to s3://{DESTINATION_BUCKET}/{output_key}")
 
         return {
             "statusCode": 200,
-            "body": f"File processed and data appended to s3://{DESTINATION_BUCKET}/{destination_key}"
+            "body": f"File processed and JSON uploaded to s3://{DESTINATION_BUCKET}/{output_key}"
         }
 
     except Exception as e:
