@@ -68,45 +68,30 @@ FIELDS = [
 
 INTERVAL_SEC = 2.0  # You can adjust this as needed
 
-def packet_bbox(pkt):
-    """
-    Compute the absolute bounding box (min_lat, max_lat, min_lon, max_lon)
-    for a single packet, given its center and corner offsets.
-    """
-    c_lat = pkt["Frame Center Latitude"]
-    c_lon = pkt["Frame Center Longitude"]
-    lats = [pkt[f"Offset Corner Latitude Point {i}"] for i in range(1, 5)]
-    lons = [pkt[f"Offset Corner Longitude Point {i}"] for i in range(1, 5)]
-    abs_lats = [c_lat + d for d in lats]
-    abs_lons = [c_lon + d for d in lons]
-    return min(abs_lats), max(abs_lats), min(abs_lons), max(abs_lons)
-
 def downsample_and_annotate(records):
     """
     Sort raw records by timestamp, then:
      - keep one packet per INTERVAL_SEC seconds
      - prune each to only the keys in FIELDS
-     - annotate each with min_lat, max_lat, min_lon, max_lon
+     - skip packets where center lat/lon are both 0.0
     Returns a list of processed packet dicts.
     """
-    # sort by Precision Time Stamp (ms)
     sorted_recs = sorted(records, key=lambda r: float(r["Precision Time Stamp"]))
     output = []
     last_ts_s = None
 
     for pkt in sorted_recs:
+        # Skip packets where both center lat and lon are 0.0
+        if (
+            float(pkt["Frame Center Latitude"]) == 0.0 and
+            float(pkt["Frame Center Longitude"]) == 0.0
+        ):
+            continue
+
         ts_s = float(pkt["Precision Time Stamp"]) / 1000.0
         if last_ts_s is None or (ts_s - last_ts_s) >= INTERVAL_SEC:
             # prune to only needed fields
             pr = {k: pkt[k] for k in FIELDS}
-            # compute and attach bbox
-            min_lat, max_lat, min_lon, max_lon = packet_bbox(pkt)
-            pr.update({
-                "min_lat": min_lat,
-                "max_lat": max_lat,
-                "min_lon": min_lon,
-                "max_lon": max_lon
-            })
             output.append(pr)
             last_ts_s = ts_s
 
