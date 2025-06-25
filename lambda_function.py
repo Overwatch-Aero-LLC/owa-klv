@@ -2,6 +2,7 @@ import json
 import boto3
 import logging
 import os
+import io
 from lib.klvParser import KLVParser
 
 logger = logging.getLogger()
@@ -18,13 +19,17 @@ UAS_LDS_KEY = [6, 14, 43, 52, 2, 11, 1, 1, 14, 1, 3, 1, 1, 0, 0, 0]
 
 TS_PACKET_SIZE = 188
 SYNC_BYTE = 0x47
-TARGET_PID = 0x101  # This is the second stream
+TARGET_PID = [0x101, 0x1f5]  # This is the second stream
 
-def extract_klv_payloads_from_ts(stream):
+def extract_klv_payloads_from_ts(stream, ts_packet_size=TS_PACKET_SIZE, klv_pids=TARGET_PID, max_packets=None):
     klv_data = b""
+    stream.seek(0)
+    packet_count = 0
     while True:
-        packet = stream.read(TS_PACKET_SIZE)
-        if not packet or len(packet) != TS_PACKET_SIZE:
+        if max_packets and packet_count >= max_packets:
+            break
+        packet = stream.read(ts_packet_size)
+        if not packet or len(packet) != ts_packet_size:
             break  # End of stream or incomplete packet
 
         # Check sync byte
@@ -34,7 +39,7 @@ def extract_klv_payloads_from_ts(stream):
         # Parse header
         pid = ((packet[1] & 0x1F) << 8) | packet[2]
 
-        if pid != TARGET_PID:
+        if pid not in klv_pids:
             continue
 
         # Adaptation field control
@@ -45,11 +50,12 @@ def extract_klv_payloads_from_ts(stream):
             adaptation_field_length = packet[4]
             payload_start += 1 + adaptation_field_length
 
-        if payload_start >= TS_PACKET_SIZE:
+        if payload_start >= ts_packet_size:
             continue  # No payload
 
         payload = packet[payload_start:]
         klv_data += payload
+        packet_count += 1
     return klv_data
 
 FIELDS = [
@@ -111,17 +117,29 @@ def lambda_handler(event, context):
     try:
         # Retrieve .ts file from the source bucket
         response = s3.get_object(Bucket=source_bucket, Key=source_key)
-        
+        raw_bytes = response['Body'].read()
+        stream = io.BytesIO(raw_bytes)
+
         # Extract KLV data directly from the stream
-        klv_data = extract_klv_payloads_from_ts(response['Body'])
+        klv_data = extract_klv_payloads_from_ts(stream)
+
+        logger.info(f"Extracted KLV data length: {len(klv_data)} bytes")
 
         # Parse the extracted KLV data
         parser = KLVParser(klv_data, UAS_LDS_KEY)
         parser.decode()
         result = parser.result
 
-        # --- NEW: Downsample, prune, and annotate before saving ---
-        # If result is a dict of packets, convert to list
+        logger.info(f"KLVParser result type: {type(result)}, length: {len(result) if hasattr(result, '__len__') else 'N/A'}")
+        # Log a sample of the result
+        if isinstance(result, dict):
+            logger.info(f"KLVParser result sample (dict, first 2): {list(result.items())[:2]}")
+        elif isinstance(result, list):
+            logger.info(f"KLVParser result sample (list, first 2): {result[:2]}")
+        else:
+            logger.info(f"KLVParser result value: {result}")
+
+        # --- Downsample, prune, and annotate before saving ---
         if isinstance(result, dict):
             records = list(result.values())
         elif isinstance(result, list):
@@ -133,7 +151,28 @@ def lambda_handler(event, context):
                 "body": "Unexpected result format from KLVParser"
             }
 
-        processed = downsample_and_annotate(records)
+        # Log how many records before filtering
+        logger.info(f"Records before downsampling/filtering: {len(records)}")
+
+        # Add logging inside downsample_and_annotate
+        processed = []
+        sorted_recs = sorted(records, key=lambda r: float(r["Precision Time Stamp"]))
+        last_ts_s = None
+        for pkt in sorted_recs:
+            # Log if skipping due to 0.0 center
+            if (
+                float(pkt["Frame Center Latitude"]) == 0.0 and
+                float(pkt["Frame Center Longitude"]) == 0.0
+            ):
+                logger.debug(f"Skipping packet with 0.0 center: {pkt}")
+                continue
+
+            ts_s = float(pkt["Precision Time Stamp"]) / 1000.0
+            if last_ts_s is None or (ts_s - last_ts_s) >= INTERVAL_SEC:
+                pr = {k: pkt[k] for k in FIELDS}
+                processed.append(pr)
+                last_ts_s = ts_s
+
         logger.info(f"Processed into {len(processed)} records")
 
         # Convert processed result to JSON
