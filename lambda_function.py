@@ -4,6 +4,7 @@ import logging
 import os
 import io
 from lib.klvParser import KLVParser
+import time
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -11,10 +12,10 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client('s3')
 
 # Corrected bucket name (bucket ONLY)
-DESTINATION_BUCKET = 'fmv-test'
+DESTINATION_BUCKET = 'fmv-operational'
 
 # Prefix for subfolder(s) inside bucket
-DESTINATION_PREFIX = 'lambdaTest/output'
+DESTINATION_PREFIX = '2025-BNSF/output'
 UAS_LDS_KEY = [6, 14, 43, 52, 2, 11, 1, 1, 14, 1, 3, 1, 1, 0, 0, 0]
 
 TS_PACKET_SIZE = 188
@@ -61,15 +62,7 @@ def extract_klv_payloads_from_ts(stream, ts_packet_size=TS_PACKET_SIZE, klv_pids
 FIELDS = [
     "Precision Time Stamp",
     "Frame Center Latitude",
-    "Frame Center Longitude",
-    "Offset Corner Latitude Point 1",
-    "Offset Corner Longitude Point 1",
-    "Offset Corner Latitude Point 2",
-    "Offset Corner Longitude Point 2",
-    "Offset Corner Latitude Point 3",
-    "Offset Corner Longitude Point 3",
-    "Offset Corner Latitude Point 4",
-    "Offset Corner Longitude Point 4",
+    "Frame Center Longitude"
 ]
 
 INTERVAL_SEC = 2.0  # You can adjust this as needed
@@ -199,8 +192,20 @@ def lambda_handler(event, context):
         # Append new processed records
         existing_data.extend(processed)
 
+        
+        # --- Keep only last 24 hours of data ---
+        now_ts_ms = time.time() * 1000.0  # Current time in ms
+        cutoff_ms = now_ts_ms - (24 * 3600 * 1000.0)  # 24 hours ago
+
+        filtered_data = [
+            pkt for pkt in existing_data
+            if float(pkt["Precision Time Stamp"]) >= cutoff_ms
+        ]
+
+        logger.info(f"After pruning to 24 hours: {len(filtered_data)} records remain")
+
         # Upload updated JSON to destination bucket
-        json_result = json.dumps(existing_data, default=str, indent=2)
+        json_result = json.dumps(filtered_data, default=str, indent=2)
         s3.put_object(
             Bucket=DESTINATION_BUCKET,
             Key=output_key,
