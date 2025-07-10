@@ -19,7 +19,7 @@ UAS_LDS_KEY = [6, 14, 43, 52, 2, 11, 1, 1, 14, 1, 3, 1, 1, 0, 0, 0]
 
 TS_PACKET_SIZE = 188
 SYNC_BYTE = 0x47
-TARGET_PID = [0x101, 0x1f5]  # This is the second stream
+TARGET_PID = [0x101, 0x1f5, 0x1fe]  # This is the second stream
 
 def extract_klv_payloads_from_ts(stream, ts_packet_size=TS_PACKET_SIZE, klv_pids=TARGET_PID, max_packets=None):
     klv_data = b""
